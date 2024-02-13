@@ -1,5 +1,7 @@
 import { Events } from '../events';
-import Cea608Parser, { CaptionScreen } from '../utils/cea-608-parser';
+import Cea608Parser, {
+  CaptionScreen,
+} from '@svta/common-media-library/cea/608/cea-608-parser';
 import OutputFilter from '../utils/output-filter';
 import { parseWebVTT } from '../utils/webvtt-parser';
 import {
