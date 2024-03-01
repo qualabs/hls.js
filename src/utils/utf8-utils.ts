@@ -90,3 +90,9 @@ function getTextDecoder() {
 
   return decoder;
 }
+
+export function strToUtf8array(str: string): Uint8Array {
+  return Uint8Array.from(unescape(encodeURIComponent(str)), (c) =>
+    c.charCodeAt(0),
+  );
+}

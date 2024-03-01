@@ -1,4 +1,5 @@
 import { base64Decode } from './numeric-encoding-utils';
+import { strToUtf8array } from './utf8-utils';
 
 function getKeyIdBytes(str: string): Uint8Array {
   const keyIdbytes = strToUtf8array(str).subarray(0, 16);
@@ -41,8 +42,3 @@ export function convertDataUriToArrayBytes(uri: string): Uint8Array | null {
   return keydata;
 }
 
-export function strToUtf8array(str: string): Uint8Array {
-  return Uint8Array.from(unescape(encodeURIComponent(str)), (c) =>
-    c.charCodeAt(0),
-  );
-}
