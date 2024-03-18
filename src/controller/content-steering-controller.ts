@@ -477,6 +477,34 @@ export default class ContentSteeringController
       }
     };
 
+    const onErrorFunction = (response, uri) => {
+      this.log('OnErrorFunction log');
+      this.log({ response });
+      this.log({ uri });
+      // this.log(
+      //   `Error loading steering manifest: ${error.code} ${error.text} (${context.url})`,
+      // );
+      // this.stopLoad();
+      // if (error.code === 410) {
+      //   this.enabled = false;
+      //   this.log(`Steering manifest ${context.url} no longer available`);
+      //   return;
+      // }
+      // let ttl = this.timeToLoad * 1000;
+      // if (error.code === 429) {
+      //   const loader = this.loader;
+      //   if (typeof loader?.getResponseHeader === 'function') {
+      //     const retryAfter = loader.getResponseHeader('Retry-After');
+      //     if (retryAfter) {
+      //       ttl = parseFloat(retryAfter) * 1000;
+      //     }
+      //   }
+      //   this.log(`Steering manifest ${context.url} rate limited`);
+      //   return;
+      // }
+      // this.scheduleRefresh(this.uri || context.url, ttl);
+    };
+
     // const callbacks: LoaderCallbacks<LoaderContext> = {
     //   onSuccess: (
     //     response: any //LoaderResponse,
@@ -567,9 +595,15 @@ export default class ContentSteeringController
     // this.log(`Requesting steering manifest: ${url}`);
     // this.loader.load(context, loaderConfig, callbacks);
 
-    callContentSteeringServer(uri).then((res) => {
-      onSuccesFunction(res);
-    });
+    callContentSteeringServer(uri + 'thisIsAWrongUri')
+      .then((res) => {
+        onSuccesFunction(res);
+      })
+      .catch((err) => {
+        onErrorFunction(err, uri);
+        this.log('QUALABS ERROR');
+        this.log({ err });
+      });
   }
 
   private scheduleRefresh(uri: string, ttlMs: number = this.timeToLoad * 1000) {
