@@ -48,6 +48,7 @@ export type UriReplacement = {
 };
 
 const PATHWAY_PENALTY_DURATION_MS = 300000;
+let newUri = '';
 
 export default class ContentSteeringController
   extends Logger
@@ -67,11 +68,21 @@ export default class ContentSteeringController
   private audioTracks: MediaPlaylist[] | null = null;
   private subtitleTracks: MediaPlaylist[] | null = null;
   private penalizedPathways: { [pathwayId: string]: number } = {};
+  private callbacks: {
+    onFetchSuccess?: (response: any) => void;
+    onFetchError?: (res: any) => void;
+    onFetchTimeout?: (url: string) => void;
+  } = {};
 
   constructor(hls: Hls) {
     super('content-steering', hls.logger);
     this.hls = hls;
     this.registerListeners();
+    this.callbacks = {
+      onFetchSuccess: this.onFetchSuccess,
+      onFetchError: this.onFetchError,
+      onFetchTimeout: this.onFetchTimeout,
+    };
   }
 
   private registerListeners() {
@@ -398,8 +409,77 @@ export default class ContentSteeringController
     });
   }
 
+  onFetchSuccess = (response: any): void => {
+    // this.log(`Loaded steering manifest: "${url}"`);
+    const steeringData = response.data as SteeringManifest;
+    this.log(`steering success data: `, steeringData);
+    if (steeringData?.VERSION !== 1) {
+      this.log(`Steering VERSION ${steeringData.VERSION} not supported!`);
+      return;
+    }
+    this.updated = performance.now();
+    this.timeToLoad = steeringData.TTL;
+    const {
+      'RELOAD-URI': reloadUri,
+      'PATHWAY-CLONES': pathwayClones,
+      'PATHWAY-PRIORITY': pathwayPriority,
+    } = steeringData;
+    if (reloadUri) {
+      try {
+        this.uri = reloadUri; //new self.URL(reloadUri, url).href;
+      } catch (error) {
+        this.enabled = false;
+        this.log(`Failed to parse Steering Manifest RELOAD-URI: ${reloadUri}`);
+        return;
+      }
+    }
+    this.scheduleRefresh(this.uri!); //|| context.url);
+    if (pathwayClones) {
+      this.clonePathways(pathwayClones);
+    }
+
+    const loadedSteeringData: SteeringManifestLoadedData = {
+      steeringManifest: steeringData,
+      url: newUri, //url.toString(),
+    };
+    this.hls.trigger(Events.STEERING_MANIFEST_LOADED, loadedSteeringData);
+
+    if (pathwayPriority) {
+      this.updatePathwayPriority(pathwayPriority);
+    }
+  };
+
+  onFetchError = (res: any): void => {
+    this.log(`steering error data: `, res);
+    this.stopLoad();
+    if (res.status === 410) {
+      this.enabled = false;
+      this.log(`Steering manifest ${res.url} no longer available`);
+      return;
+    }
+    let ttl = this.timeToLoad * 1000;
+    if (res.status === 429) {
+      if (res.headers) {
+        // Check if headers exist before trying to get Retry-After value
+        const retryAfter = res.headers.get('Retry-After');
+        if (retryAfter) {
+          ttl = parseFloat(retryAfter) * 1000;
+        }
+      }
+      this.log(`Steering manifest ${res.url} rate limited`);
+      return;
+    }
+    this.scheduleRefresh(this.uri || res.url, ttl);
+  };
+
+  onFetchTimeout = (url: string): void => {
+    this.log(`Timeout loading steering manifest (${url})`);
+    this.scheduleRefresh(this.uri || url);
+  };
+
   private loadSteeringManifest(uri: string) {
     const config = this.hls.config;
+    newUri = uri;
 
     const throughput =
       (this.hls.bandwidthEstimate || config.abrEwmaDefaultEstimate) | 0;
@@ -412,81 +492,11 @@ export default class ContentSteeringController
       throughput;
     this.log('content steering url with params: ', url);
 
-    const onSuccessFunction = (response) => {
-      // this.log(`Loaded steering manifest: "${url}"`);
-      const steeringData = response.data as SteeringManifest;
-      this.log(`steering success data: `, steeringData);
-      if (steeringData?.VERSION !== 1) {
-        this.log(`Steering VERSION ${steeringData.VERSION} not supported!`);
-        return;
-      }
-      this.updated = performance.now();
-      this.timeToLoad = steeringData.TTL;
-      const {
-        'RELOAD-URI': reloadUri,
-        'PATHWAY-CLONES': pathwayClones,
-        'PATHWAY-PRIORITY': pathwayPriority,
-      } = steeringData;
-      if (reloadUri) {
-        try {
-          this.uri = reloadUri; //new self.URL(reloadUri, url).href;
-        } catch (error) {
-          this.enabled = false;
-          this.log(
-            `Failed to parse Steering Manifest RELOAD-URI: ${reloadUri}`,
-          );
-          return;
-        }
-      }
-      this.scheduleRefresh(this.uri!); //|| context.url);
-      if (pathwayClones) {
-        this.clonePathways(pathwayClones);
-      }
-
-      const loadedSteeringData: SteeringManifestLoadedData = {
-        steeringManifest: steeringData,
-        url: uri, //url.toString(),
-      };
-      this.hls.trigger(Events.STEERING_MANIFEST_LOADED, loadedSteeringData);
-
-      if (pathwayPriority) {
-        this.updatePathwayPriority(pathwayPriority);
-      }
-    };
-
-    const onErrorFunction = (res) => {
-      this.log(`steering error data: `, res);
-      this.stopLoad();
-      if (res.status === 410) {
-        this.enabled = false;
-        this.log(`Steering manifest ${res.url} no longer available`);
-        return;
-      }
-      let ttl = this.timeToLoad * 1000;
-      if (res.status === 429) {
-        if (res.headers) {
-          // Check if headers exist before trying to get Retry-After value
-          const retryAfter = res.headers.get('Retry-After');
-          if (retryAfter) {
-            ttl = parseFloat(retryAfter) * 1000;
-          }
-        }
-        this.log(`Steering manifest ${res.url} rate limited`);
-        return;
-      }
-      this.scheduleRefresh(this.uri || res.url, ttl);
-    };
-
-    const onTimeout = (url: string) => {
-      this.log(`Timeout loading steering manifest (${url})`);
-      this.scheduleRefresh(this.uri || url);
-    };
-
     callContentSteeringServer(
       url,
-      onSuccessFunction,
-      onErrorFunction,
-      onTimeout,
+      this.callbacks.onFetchSuccess!,
+      this.callbacks.onFetchError!,
+      this.callbacks.onFetchTimeout!,
     );
   }
 
