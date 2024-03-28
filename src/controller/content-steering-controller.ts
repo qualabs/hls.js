@@ -24,27 +24,9 @@ import type {
 import type { RetryConfig } from '../config';
 
 import type { MediaAttributes, MediaPlaylist } from '../types/media-playlist';
-
-export type SteeringManifest = {
-  VERSION: 1;
-  TTL: number;
-  'RELOAD-URI'?: string;
-  'PATHWAY-PRIORITY': string[];
-  'PATHWAY-CLONES'?: PathwayClone[];
-};
-
-export type PathwayClone = {
-  'BASE-ID': string;
-  ID: string;
-  'URI-REPLACEMENT': UriReplacement;
-};
-
-export type UriReplacement = {
-  HOST?: string;
-  PARAMS?: { [queryParameter: string]: string };
-  'PER-VARIANT-URIS'?: { [stableVariantId: string]: string };
-  'PER-RENDITION-URIS'?: { [stableRenditionId: string]: string };
-};
+import type { PathwayClone } from '@svta/common-media-library/contentSteering';
+import type { SteeringManifest } from '@svta/common-media-library/contentSteering';
+import type { UriReplacement } from '@svta/common-media-library/contentSteering';
 
 const PATHWAY_PENALTY_DURATION_MS = 300000;
 

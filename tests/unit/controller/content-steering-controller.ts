@@ -19,7 +19,7 @@ import type {
 } from '../../../src/types/events';
 import type { Level } from '../../../src/types/level';
 import type { MediaPlaylist } from '../../../src/types/media-playlist';
-import type { SteeringManifest } from '../../../src/controller/content-steering-controller';
+import type { SteeringManifest } from '@svta/common-media-library/contentSteering';
 import type { LoaderResponse } from '../../../src/types/loader';
 
 import sinon from 'sinon';
