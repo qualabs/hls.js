@@ -4,6 +4,10 @@
 
 ```ts
 
+import { PathwayClone } from '@svta/common-media-library/contentSteering';
+import { SteeringManifest } from '@svta/common-media-library/contentSteering';
+import { UriReplacement } from '@svta/common-media-library/contentSteering';
+
 // Warning: (ae-missing-release-tag) "AbrComponentAPI" is part of the package's API, but it is missing a release tag (@alpha, @beta, @public, or @internal)
 //
 // @public (undocumented)
@@ -3018,14 +3022,7 @@ export class Part extends BaseSegment {
     stats: LoadStats;
 }
 
-// Warning: (ae-missing-release-tag) "PathwayClone" is part of the package's API, but it is missing a release tag (@alpha, @beta, @public, or @internal)
-//
-// @public (undocumented)
-export type PathwayClone = {
-    'BASE-ID': string;
-    ID: string;
-    'URI-REPLACEMENT': UriReplacement;
-};
+export { PathwayClone }
 
 // Warning: (ae-missing-release-tag) "PlaylistContextType" is part of the package's API, but it is missing a release tag (@alpha, @beta, @public, or @internal)
 //
@@ -3120,16 +3117,7 @@ export type SelectionPreferences = {
 // @public (undocumented)
 export type SourceBufferName = 'video' | 'audio' | 'audiovideo';
 
-// Warning: (ae-missing-release-tag) "SteeringManifest" is part of the package's API, but it is missing a release tag (@alpha, @beta, @public, or @internal)
-//
-// @public (undocumented)
-export type SteeringManifest = {
-    VERSION: 1;
-    TTL: number;
-    'RELOAD-URI'?: string;
-    'PATHWAY-PRIORITY': string[];
-    'PATHWAY-CLONES'?: PathwayClone[];
-};
+export { SteeringManifest }
 
 // Warning: (ae-missing-release-tag) "SteeringManifestLoadedData" is part of the package's API, but it is missing a release tag (@alpha, @beta, @public, or @internal)
 //
@@ -3392,21 +3380,7 @@ export type TSDemuxerConfig = {
     forceKeyFrameOnDiscontinuity: boolean;
 };
 
-// Warning: (ae-missing-release-tag) "UriReplacement" is part of the package's API, but it is missing a release tag (@alpha, @beta, @public, or @internal)
-//
-// @public (undocumented)
-export type UriReplacement = {
-    HOST?: string;
-    PARAMS?: {
-        [queryParameter: string]: string;
-    };
-    'PER-VARIANT-URIS'?: {
-        [stableVariantId: string]: string;
-    };
-    'PER-RENDITION-URIS'?: {
-        [stableRenditionId: string]: string;
-    };
-};
+export { UriReplacement }
 
 // Warning: (ae-missing-release-tag) "UserdataSample" is part of the package's API, but it is missing a release tag (@alpha, @beta, @public, or @internal)
 //
