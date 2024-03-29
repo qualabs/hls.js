@@ -19,7 +19,7 @@ import type {
 } from '../../../src/types/events';
 import type { Level } from '../../../src/types/level';
 import type { MediaPlaylist } from '../../../src/types/media-playlist';
-import type { SteeringManifest } from '@svta/common-media-library/contentSteering';
+import type { ContentSteeringResponse } from '@svta/common-media-library/contentSteering';
 import type { LoaderResponse } from '../../../src/types/loader';
 
 import sinon from 'sinon';
@@ -177,8 +177,8 @@ describe('ContentSteeringController', function () {
       expect(contentSteeringController.reloadTimer).to.equal(-1);
       loadSteeringManifest(
         {
-          TTL: 100,
-          'RELOAD-URI': 'http://beta.example2.com/manifest.json',
+          ttl: 100,
+          reloadUri: 'http://beta.example2.com/manifest.json',
         },
         contentSteeringController,
       );
@@ -262,7 +262,7 @@ describe('ContentSteeringController', function () {
       expect(manifestParsedData.levels[0].pathwayId).to.equal('Bar');
       loadSteeringManifest(
         {
-          'PATHWAY-PRIORITY': ['Baz', 'Foo', 'Bar'],
+          pathwayPriority: ['Baz', 'Foo', 'Bar'],
         },
         contentSteeringController,
       );
@@ -332,8 +332,8 @@ describe('ContentSteeringController', function () {
         ).to.have.lengthOf(30);
         loadSteeringManifest(
           {
-            'PATHWAY-PRIORITY': ['Buzz', 'Foo', 'Bar', 'Baz'],
-            'PATHWAY-CLONES': [
+            pathwayPriority: ['Buzz', 'Foo', 'Bar', 'Baz'],
+            pathwayClones: [
               {
                 ID: 'Buzz',
                 'BASE-ID': 'Foo',
@@ -410,8 +410,8 @@ describe('ContentSteeringController', function () {
         );
         loadSteeringManifest(
           {
-            'PATHWAY-PRIORITY': ['Buzz', 'Foo', 'Bar', 'Baz'],
-            'PATHWAY-CLONES': [
+            pathwayPriority: ['Buzz', 'Foo', 'Bar', 'Baz'],
+            pathwayClones: [
               {
                 ID: 'Buzz',
                 'BASE-ID': 'Foo',
@@ -452,8 +452,8 @@ describe('ContentSteeringController', function () {
       it('sets the URI of Variants with STABLE-VARIANT-ID to the corresponding key-value pair in PER-VARIANT-URIS', function () {
         loadSteeringManifest(
           {
-            'PATHWAY-PRIORITY': ['Buzz', 'Foo', 'Bar', 'Baz'],
-            'PATHWAY-CLONES': [
+            pathwayPriority: ['Buzz', 'Foo', 'Bar', 'Baz'],
+            pathwayClones: [
               {
                 ID: 'Buzz',
                 'BASE-ID': 'Foo',
@@ -543,8 +543,8 @@ describe('ContentSteeringController', function () {
       it('sets the URI of Renditions with STABLE-RENDITION-ID to the corresponding key-value pair in PER-RENDITION-URIS', function () {
         loadSteeringManifest(
           {
-            'PATHWAY-PRIORITY': ['Buzz', 'Foo', 'Bar', 'Baz'],
-            'PATHWAY-CLONES': [
+            pathwayPriority: ['Buzz', 'Foo', 'Bar', 'Baz'],
+            pathwayClones: [
               {
                 ID: 'Buzz',
                 'BASE-ID': 'Foo',
@@ -640,8 +640,8 @@ describe('ContentSteeringController', function () {
       it('clones other pathway clones that appear ealier in PATHWAY-CLONES array', function () {
         loadSteeringManifest(
           {
-            'PATHWAY-PRIORITY': ['Bear', 'Foo', 'Bar', 'Baz', 'Buzz'],
-            'PATHWAY-CLONES': [
+            pathwayPriority: ['Bear', 'Foo', 'Bar', 'Baz', 'Buzz'],
+            pathwayClones: [
               {
                 ID: 'Buzz',
                 'BASE-ID': 'Foo',
@@ -721,8 +721,8 @@ describe('ContentSteeringController', function () {
       it('ignores empty HOST', function () {
         loadSteeringManifest(
           {
-            'PATHWAY-PRIORITY': ['Buzz', 'Foo', 'Bar', 'Baz'],
-            'PATHWAY-CLONES': [
+            pathwayPriority: ['Buzz', 'Foo', 'Bar', 'Baz'],
+            pathwayClones: [
               {
                 ID: 'Buzz',
                 'BASE-ID': 'Foo',
@@ -756,8 +756,8 @@ describe('ContentSteeringController', function () {
       it('ignores empty PARAM names', function () {
         loadSteeringManifest(
           {
-            'PATHWAY-PRIORITY': ['Buzz', 'Foo', 'Bar', 'Baz'],
-            'PATHWAY-CLONES': [
+            pathwayPriority: ['Buzz', 'Foo', 'Bar', 'Baz'],
+            pathwayClones: [
               {
                 ID: 'Buzz',
                 'BASE-ID': 'Foo',
@@ -794,8 +794,8 @@ describe('ContentSteeringController', function () {
       it('ignores missing Pathway BASE-IDs', function () {
         loadSteeringManifest(
           {
-            'PATHWAY-PRIORITY': ['Buzz', 'Foo', 'Bar', 'Baz'],
-            'PATHWAY-CLONES': [
+            pathwayPriority: ['Buzz', 'Foo', 'Bar', 'Baz'],
+            pathwayClones: [
               {
                 ID: 'Buzz',
                 'BASE-ID': 'Not-Found',
@@ -833,8 +833,8 @@ describe('ContentSteeringController', function () {
       it('only clones Pathway Clones with the same ID once', function () {
         loadSteeringManifest(
           {
-            'PATHWAY-PRIORITY': ['Buzz', 'Foo', 'Bar', 'Baz'],
-            'PATHWAY-CLONES': [
+            pathwayPriority: ['Buzz', 'Foo', 'Bar', 'Baz'],
+            pathwayClones: [
               {
                 ID: 'Buzz',
                 'BASE-ID': 'Foo',
@@ -862,8 +862,8 @@ describe('ContentSteeringController', function () {
         );
         loadSteeringManifest(
           {
-            'PATHWAY-PRIORITY': ['Buzz', 'Foo', 'Bar', 'Baz'],
-            'PATHWAY-CLONES': [
+            pathwayPriority: ['Buzz', 'Foo', 'Bar', 'Baz'],
+            pathwayClones: [
               {
                 ID: 'Buzz',
                 'BASE-ID': 'Bar',
@@ -902,15 +902,15 @@ describe('ContentSteeringController', function () {
 });
 
 function loadSteeringManifest(
-  partialManifest: Partial<SteeringManifest>,
+  partialManifest: Partial<ContentSteeringResponse>,
   steering: ConentSteeringControllerTestable,
 ) {
   steering.startLoad();
   const response: LoaderResponse = {
     url: '',
     data: {
-      VERSION: 1,
-      TTL: 300,
+      version: 1,
+      ttl: 300,
       ...partialManifest,
     },
   };

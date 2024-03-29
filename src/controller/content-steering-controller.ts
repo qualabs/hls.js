@@ -25,7 +25,7 @@ import type { RetryConfig } from '../config';
 
 import type { MediaAttributes, MediaPlaylist } from '../types/media-playlist';
 import type { PathwayClone } from '@svta/common-media-library/contentSteering';
-import type { SteeringManifest } from '@svta/common-media-library/contentSteering';
+import type { ContentSteeringResponse } from '@svta/common-media-library/contentSteering';
 import type { UriReplacement } from '@svta/common-media-library/contentSteering';
 
 const PATHWAY_PENALTY_DURATION_MS = 300000;
@@ -425,18 +425,19 @@ export default class ContentSteeringController
         networkDetails: any,
       ) => {
         this.log(`Loaded steering manifest: "${url}"`);
-        const steeringData = response.data as SteeringManifest;
-        if (steeringData?.VERSION !== 1) {
-          this.log(`Steering VERSION ${steeringData.VERSION} not supported!`);
+        const steeringData = response.data as ContentSteeringResponse;
+        if (steeringData?.version !== 1) {
+          this.log(`Steering VERSION ${steeringData.version} not supported!`);
           return;
         }
         this.updated = performance.now();
-        this.timeToLoad = steeringData.TTL;
+        this.timeToLoad = steeringData.ttl;
         const {
-          'RELOAD-URI': reloadUri,
-          'PATHWAY-CLONES': pathwayClones,
-          'PATHWAY-PRIORITY': pathwayPriority,
+          reloadUri: reloadUri,
+          pathwayClones: pathwayClones,
+          pathwayPriority: pathwayPriority,
         } = steeringData;
+
         if (reloadUri) {
           try {
             this.uri = new self.URL(reloadUri, url).href;

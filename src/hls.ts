@@ -1046,7 +1046,7 @@ export type { MediaKeySessionContext } from './controller/eme-controller';
 export type { ILogger, Logger } from './utils/logger';
 export type {
   PathwayClone,
-  SteeringManifest,
+  ContentSteeringResponse,
   UriReplacement,
 } from '@svta/common-media-library/contentSteering';
 export type { SubtitleStreamController } from './controller/subtitle-stream-controller';
