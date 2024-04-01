@@ -3,7 +3,7 @@ import { Level } from '../types/level';
 import { reassignFragmentLevelIndexes } from '../utils/level-helper';
 import { AttrList } from '../utils/attr-list';
 import { ErrorActionFlags, NetworkErrorAction } from './error-controller';
-import { Logger, logger } from '../utils/logger';
+import { Logger } from '../utils/logger';
 import {
   PlaylistContextType,
   type Loader,
@@ -22,7 +22,10 @@ import type {
   ManifestParsedData,
 } from '../types/events';
 import type { RetryConfig } from '../config';
-import { callContentSteeringServer } from '@svta/common-media-library/content-steering';
+import {
+  createUrl,
+  callContentSteeringServer,
+} from '@svta/common-media-library/contentSteering';
 
 import type { MediaAttributes, MediaPlaylist } from '../types/media-playlist';
 
@@ -484,12 +487,10 @@ export default class ContentSteeringController
     const throughput =
       (this.hls.bandwidthEstimate || config.abrEwmaDefaultEstimate) | 0;
 
-    const url =
-      uri +
-      '&_HLS_pathway=' +
-      this.pathwayId +
-      '&_HLS_throughput=' +
-      throughput;
+    const pathwayQuery = `&_HLS_pathway=${this.pathwayId}`;
+    const throughputQuery = `&_HLS_throughput=${throughput}`;
+
+    const url = createUrl(uri, pathwayQuery, throughputQuery);
     this.log('content steering url with params: ', url);
 
     callContentSteeringServer(
