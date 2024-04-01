@@ -22,6 +22,10 @@ import type {
   ManifestParsedData,
 } from '../types/events';
 import type { RetryConfig } from '../config';
+import {
+  createUrl,
+  callContentSteeringServer,
+} from '@svta/common-media-library/contentSteering';
 
 import type { MediaAttributes, MediaPlaylist } from '../types/media-playlist';
 
@@ -47,6 +51,7 @@ export type UriReplacement = {
 };
 
 const PATHWAY_PENALTY_DURATION_MS = 300000;
+let newUri = '';
 
 export default class ContentSteeringController
   extends Logger
@@ -66,11 +71,21 @@ export default class ContentSteeringController
   private audioTracks: MediaPlaylist[] | null = null;
   private subtitleTracks: MediaPlaylist[] | null = null;
   private penalizedPathways: { [pathwayId: string]: number } = {};
+  private callbacks: {
+    onFetchSuccess?: (response: any) => void;
+    onFetchError?: (res: any) => void;
+    onFetchTimeout?: (url: string) => void;
+  } = {};
 
   constructor(hls: Hls) {
     super('content-steering', hls.logger);
     this.hls = hls;
     this.registerListeners();
+    this.callbacks = {
+      onFetchSuccess: this.onFetchSuccess,
+      onFetchError: this.onFetchError,
+      onFetchTimeout: this.onFetchTimeout,
+    };
   }
 
   private registerListeners() {
@@ -397,133 +412,93 @@ export default class ContentSteeringController
     });
   }
 
-  private loadSteeringManifest(uri: string) {
-    const config = this.hls.config;
-    const Loader = config.loader;
-    if (this.loader) {
-      this.loader.destroy();
-    }
-    this.loader = new Loader(config) as Loader<LoaderContext>;
-
-    let url: URL;
-    try {
-      url = new self.URL(uri);
-    } catch (error) {
-      this.enabled = false;
-      this.log(`Failed to parse Steering Manifest URI: ${uri}`);
+  onFetchSuccess = (response: any): void => {
+    // this.log(`Loaded steering manifest: "${url}"`);
+    const steeringData = response.data as SteeringManifest;
+    this.log(`steering success data: `, steeringData);
+    if (steeringData?.VERSION !== 1) {
+      this.log(`Steering VERSION ${steeringData.VERSION} not supported!`);
       return;
     }
-    if (url.protocol !== 'data:') {
-      const throughput =
-        (this.hls.bandwidthEstimate || config.abrEwmaDefaultEstimate) | 0;
-      url.searchParams.set('_HLS_pathway', this.pathwayId);
-      url.searchParams.set('_HLS_throughput', '' + throughput);
+    this.updated = performance.now();
+    this.timeToLoad = steeringData.TTL;
+    const {
+      'RELOAD-URI': reloadUri,
+      'PATHWAY-CLONES': pathwayClones,
+      'PATHWAY-PRIORITY': pathwayPriority,
+    } = steeringData;
+    if (reloadUri) {
+      try {
+        this.uri = reloadUri; //new self.URL(reloadUri, url).href;
+      } catch (error) {
+        this.enabled = false;
+        this.log(`Failed to parse Steering Manifest RELOAD-URI: ${reloadUri}`);
+        return;
+      }
     }
-    const context: LoaderContext = {
-      responseType: 'json',
-      url: url.href,
+    this.scheduleRefresh(this.uri!); //|| context.url);
+    if (pathwayClones) {
+      this.clonePathways(pathwayClones);
+    }
+
+    const loadedSteeringData: SteeringManifestLoadedData = {
+      steeringManifest: steeringData,
+      url: newUri, //url.toString(),
     };
+    this.hls.trigger(Events.STEERING_MANIFEST_LOADED, loadedSteeringData);
 
-    const loadPolicy = config.steeringManifestLoadPolicy.default;
-    const legacyRetryCompatibility: RetryConfig | Record<string, void> =
-      loadPolicy.errorRetry || loadPolicy.timeoutRetry || {};
-    const loaderConfig: LoaderConfiguration = {
-      loadPolicy,
-      timeout: loadPolicy.maxLoadTimeMs,
-      maxRetry: legacyRetryCompatibility.maxNumRetry || 0,
-      retryDelay: legacyRetryCompatibility.retryDelayMs || 0,
-      maxRetryDelay: legacyRetryCompatibility.maxRetryDelayMs || 0,
-    };
+    if (pathwayPriority) {
+      this.updatePathwayPriority(pathwayPriority);
+    }
+  };
 
-    const callbacks: LoaderCallbacks<LoaderContext> = {
-      onSuccess: (
-        response: LoaderResponse,
-        stats: LoaderStats,
-        context: LoaderContext,
-        networkDetails: any,
-      ) => {
-        this.log(`Loaded steering manifest: "${url}"`);
-        const steeringData = response.data as SteeringManifest;
-        if (steeringData?.VERSION !== 1) {
-          this.log(`Steering VERSION ${steeringData.VERSION} not supported!`);
-          return;
+  onFetchError = (res: any): void => {
+    this.log(`steering error data: `, res);
+    this.stopLoad();
+    if (res.status === 410) {
+      this.enabled = false;
+      this.log(`Steering manifest ${res.url} no longer available`);
+      return;
+    }
+    let ttl = this.timeToLoad * 1000;
+    if (res.status === 429) {
+      if (res.headers) {
+        // Check if headers exist before trying to get Retry-After value
+        const retryAfter = res.headers.get('Retry-After');
+        if (retryAfter) {
+          ttl = parseFloat(retryAfter) * 1000;
         }
-        this.updated = performance.now();
-        this.timeToLoad = steeringData.TTL;
-        const {
-          'RELOAD-URI': reloadUri,
-          'PATHWAY-CLONES': pathwayClones,
-          'PATHWAY-PRIORITY': pathwayPriority,
-        } = steeringData;
-        if (reloadUri) {
-          try {
-            this.uri = new self.URL(reloadUri, url).href;
-          } catch (error) {
-            this.enabled = false;
-            this.log(
-              `Failed to parse Steering Manifest RELOAD-URI: ${reloadUri}`,
-            );
-            return;
-          }
-        }
-        this.scheduleRefresh(this.uri || context.url);
-        if (pathwayClones) {
-          this.clonePathways(pathwayClones);
-        }
+      }
+      this.log(`Steering manifest ${res.url} rate limited`);
+      return;
+    }
+    this.scheduleRefresh(this.uri || res.url, ttl);
+  };
 
-        const loadedSteeringData: SteeringManifestLoadedData = {
-          steeringManifest: steeringData,
-          url: url.toString(),
-        };
-        this.hls.trigger(Events.STEERING_MANIFEST_LOADED, loadedSteeringData);
+  onFetchTimeout = (url: string): void => {
+    this.log(`Timeout loading steering manifest (${url})`);
+    this.scheduleRefresh(this.uri || url);
+  };
 
-        if (pathwayPriority) {
-          this.updatePathwayPriority(pathwayPriority);
-        }
-      },
+  private loadSteeringManifest(uri: string) {
+    const config = this.hls.config;
+    newUri = uri;
 
-      onError: (
-        error: { code: number; text: string },
-        context: LoaderContext,
-        networkDetails: any,
-        stats: LoaderStats,
-      ) => {
-        this.log(
-          `Error loading steering manifest: ${error.code} ${error.text} (${context.url})`,
-        );
-        this.stopLoad();
-        if (error.code === 410) {
-          this.enabled = false;
-          this.log(`Steering manifest ${context.url} no longer available`);
-          return;
-        }
-        let ttl = this.timeToLoad * 1000;
-        if (error.code === 429) {
-          const loader = this.loader;
-          if (typeof loader?.getResponseHeader === 'function') {
-            const retryAfter = loader.getResponseHeader('Retry-After');
-            if (retryAfter) {
-              ttl = parseFloat(retryAfter) * 1000;
-            }
-          }
-          this.log(`Steering manifest ${context.url} rate limited`);
-          return;
-        }
-        this.scheduleRefresh(this.uri || context.url, ttl);
-      },
+    const throughput =
+      (this.hls.bandwidthEstimate || config.abrEwmaDefaultEstimate) | 0;
 
-      onTimeout: (
-        stats: LoaderStats,
-        context: LoaderContext,
-        networkDetails: any,
-      ) => {
-        this.log(`Timeout loading steering manifest (${context.url})`);
-        this.scheduleRefresh(this.uri || context.url);
-      },
-    };
+    const pathwayQuery = `&_HLS_pathway=${this.pathwayId}`;
+    const throughputQuery = `&_HLS_throughput=${throughput}`;
 
-    this.log(`Requesting steering manifest: ${url}`);
-    this.loader.load(context, loaderConfig, callbacks);
+    const url = createUrl(uri, pathwayQuery, throughputQuery);
+    this.log('content steering url with params: ', url);
+
+    callContentSteeringServer(
+      url,
+      this.callbacks.onFetchSuccess!,
+      this.callbacks.onFetchError!,
+      this.callbacks.onFetchTimeout!,
+    );
   }
 
   private scheduleRefresh(uri: string, ttlMs: number = this.timeToLoad * 1000) {
