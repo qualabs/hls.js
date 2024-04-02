@@ -1,5 +1,6 @@
 import { fixLineBreaks } from './vttparser';
-import type { CaptionScreen, Row } from './cea-608-parser';
+import type { CaptionScreen } from '@svta/common-media-library/captions/cea608-708/CaptionScreen';
+import { Row } from '@svta/common-media-library/captions/cea608-708/Row';
 import { generateCueId } from './webvtt-parser';
 import { addCueToTrack } from './texttrack-utils';
 

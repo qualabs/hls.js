@@ -4,6 +4,8 @@
 
 ```ts
 
+import { CaptionScreen } from '@svta/common-media-library/captions/cea608-708/CaptionScreen';
+
 // Warning: (ae-missing-release-tag) "AbrComponentAPI" is part of the package's API, but it is missing a release tag (@alpha, @beta, @public, or @internal)
 //
 // @public (undocumented)
@@ -811,8 +813,6 @@ export type ContentSteeringOptions = {
 //
 // @public (undocumented)
 export interface CuesInterface {
-    // Warning: (ae-forgotten-export) The symbol "CaptionScreen" needs to be exported by the entry point hls.d.ts
-    //
     // (undocumented)
     newCue(track: TextTrack | null, startTime: number, endTime: number, captionScreen: CaptionScreen): VTTCue[];
 }
