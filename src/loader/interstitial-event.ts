@@ -34,6 +34,12 @@ export type BaseData = {
 export type InterstitialId = string;
 export type InterstitialAssetId = string;
 
+export type InterstitialTrackingEvent = {
+  type: string;
+  start: number;
+  urls: string[];
+};
+
 export type InterstitialAssetItem = {
   parentIdentifier: InterstitialId;
   identifier: InterstitialAssetId;
@@ -42,6 +48,7 @@ export type InterstitialAssetItem = {
   timelineStart: number;
   uri: string;
   error?: Error;
+  trackingEvents?: InterstitialTrackingEvent[];
 };
 
 export function generateAssetIdentifier(

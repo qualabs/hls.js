@@ -28,6 +28,7 @@ import { isCompatibleTrackChange } from '../utils/mediasource-helper';
 import { getBasicSelectionOption } from '../utils/rendition-helper';
 import type { HlsConfig } from '../config';
 import type Hls from '../hls';
+import type { InterstitialTrackingEvent } from '../loader/interstitial-event';
 import type { LevelDetails } from '../loader/level-details';
 import type { SourceBufferName } from '../types/buffer';
 import type { NetworkComponentAPI } from '../types/component-api';
@@ -1802,6 +1803,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))}`,
         this.flushFrontBuffer(timelineStart);
       }
       const uri = interstitial.assetUrl;
+      const trackingEvents =
+        interstitial?.assetList?.[assetListIndex]?.trackingEvents || [];
       if (uri) {
         return this.createAsset(
           interstitial,
@@ -1810,6 +1813,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))}`,
           timelineStart,
           interstitial.duration,
           uri,
+          trackingEvents,
         );
       }
       let liveStartPosition = 0;
@@ -1896,6 +1900,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))}`,
     timelineStart: number,
     duration: number,
     uri: string,
+    trackingEvents: InterstitialTrackingEvent[],
   ): HlsAssetPlayer {
     const assetItem: InterstitialAssetItem = {
       parentIdentifier: interstitial.identifier,
@@ -1904,6 +1909,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))}`,
       startOffset,
       timelineStart,
       uri,
+      trackingEvents,
     };
     return this.createAssetPlayer(interstitial, assetItem, assetListIndex);
   }
@@ -2349,6 +2355,8 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))}`,
     let sumDuration = 0;
     assets.forEach((asset, assetListIndex) => {
       const duration = parseFloat(asset.DURATION);
+      const trackingEvents =
+        asset['X-AD-CREATIVE-SIGNALING']?.payload[0]?.tracking || [];
       this.createAsset(
         interstitial,
         assetListIndex,
@@ -2356,6 +2364,7 @@ Schedule: ${scheduleItems.map((seg) => segmentToString(seg))}`,
         eventStart + sumDuration,
         duration,
         asset.URI,
+        trackingEvents,
       );
       sumDuration += duration;
     });

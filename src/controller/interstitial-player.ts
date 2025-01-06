@@ -10,6 +10,7 @@ import {
 import { BufferHelper } from '../utils/buffer-helper';
 import type { HlsConfig } from '../config';
 import type Hls from '../hls';
+import type { InterstitialTrackingEvent } from '../loader/interstitial-event';
 import type { BufferCodecsData, MediaAttachingData } from '../types/events';
 
 export class HlsAssetPlayer {
@@ -20,6 +21,7 @@ export class HlsAssetPlayer {
   private hasDetails: boolean = false;
   private mediaAttached: HTMLMediaElement | null = null;
   private playoutOffset: number = 0;
+  private firedEvents: Set<string> = new Set();
 
   constructor(
     HlsPlayerClass: typeof Hls,
@@ -53,8 +55,47 @@ export class HlsAssetPlayer {
           event.assetList[event.assetList.indexOf(assetItem)]?.startOffset || 0;
         media.addEventListener('timeupdate', this.checkPlayout);
       }
+
+      media.addEventListener('timeupdate', this.checkAdCreativeSignaling);
     });
   }
+
+  private checkAdCreativeSignaling = () => {
+    const asset = this.assetItem;
+    if (!asset) return;
+
+    const { trackingEvents } = asset;
+    const media = this.mediaAttached;
+    if (!media || !trackingEvents) return;
+
+    const currentTime = media.currentTime;
+
+    trackingEvents.forEach((event: InterstitialTrackingEvent) => {
+      const eventKey = `${event.type}-${event.start}`;
+
+      if (currentTime >= event.start && !this.firedEvents.has(eventKey)) {
+        this.firedEvents.add(eventKey);
+
+        Promise.all(event.urls.map((url) => this.sendTrackingEvent(url)));
+      }
+    });
+  };
+
+  private sendTrackingEvent = async (url: string) => {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        this.hls?.logger.error(
+          `Error on Ad Creative Signaling event tracking request ${url}: ${response.status}`,
+        );
+      }
+    } catch (error) {
+      this.hls?.logger.error(
+        `Error on Ad Creative Signaling event tracking request ${url}:`,
+        error,
+      );
+    }
+  };
 
   private checkPlayout = () => {
     const interstitial = this.interstitial;
@@ -142,6 +183,7 @@ export class HlsAssetPlayer {
     const media = this.mediaAttached;
     if (media) {
       media.removeEventListener('timeupdate', this.checkPlayout);
+      media.removeEventListener('timeupdate', this.checkAdCreativeSignaling);
     }
   }
 
