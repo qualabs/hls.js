@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>HLS.js Live Playback</title>
+
+    <script src="../dist/hls.js"></script>
+
+    <style>
+      video {
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="container py-4">
+        <header class="pb-3 mb-4 border-bottom">
+          <h1>HLS.js Live Playback Sample</h1>
+        </header>
+        <div class="row margin-top-row">
+          <div class="col-md-12">
+            <div class="h-100 p-5 border rounded-3">
+              <h5>Player</h5>
+              <div>
+                <video id="video" controls="true" muted></video>
+                <div>
+                  <div>Live latency: <span id="liveLatency"></span></div>
+                  <div>Buffer length: <span id="bufferLength"></span></div>
+                  <div>Playback rate: <span id="playbackRate"></span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <footer class="pt-3 mt-4 text-muted border-top">
+          &copy; HLS.js Sample
+        </footer>
+      </div>
+    </main>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function () {
+        const video = document.getElementById('video');
+        const liveLatencySpan = document.getElementById('liveLatency');
+        const bufferLengthSpan = document.getElementById('bufferLength');
+        const playbackRateSpan = document.getElementById('playbackRate');
+
+        // Hardcoded HLS manifest URL (replace with your live stream URL)
+        // This is a sample live stream. You may need to find a suitable live HLS stream URL for testing.
+        const hlsUrl =
+          'https://stream.mux.com/V6gY8c5yKpeK2wF5yKk015EK2wF5yKk001a/master.m3u8';
+
+        const hls = new Hls({
+          liveSyncDurationCount: 3, // Target 3 segments behind the live edge
+          liveMaxLatencyDurationCount: 5, // Allow up to 5 segments behind before seeking
+        });
+
+        if (Hls.isSupported()) {
+          hls.loadSource(hlsUrl);
+          hls.attachMedia(video);
+
+          hls.on(Hls.Events.MEDIA_ATTACHED, function () {
+            console.log('Media attached');
+            // Optional: Seek to the live edge immediately after attaching
+            // This can help ensure players start at a similar point
+            hls.liveSyncPosition = hls.liveSyncPosition || hls.media.duration; // Ensure we have a liveSyncPosition
+            video.play();
+          });
+
+          hls.on(Hls.Events.ERROR, function (event, data) {
+            console.error(
+              'HLS.js error:',
+              data.fatal,
+              data.type,
+              data.details,
+              data.err,
+            );
+          });
+
+          setInterval(() => {
+            if (hls && video) {
+              const stats = hls.levelController.stats;
+              // HLS.js does not have a direct 'liveLatency' stat like Shaka.
+              // We estimate latency based on the difference between the live edge and current time.
+              const liveEdge = hls.liveSyncPosition;
+              let estimatedLatency = null;
+              if (liveEdge !== undefined) {
+                estimatedLatency = liveEdge - video.currentTime;
+                liveLatencySpan.textContent = estimatedLatency.toFixed(2) + 's';
+
+                // Basic playback rate adjustment for synchronization
+                const targetLatency =
+                  hls.config.liveSyncDurationCount *
+                  (hls.levels[hls.currentLevel]?.details?.targetduration || 1); // Estimate target latency
+                const latencyTolerance = 1; // Allow 1 second tolerance
+
+                if (estimatedLatency > targetLatency + latencyTolerance) {
+                  // Falling behind, speed up
+                  video.playbackRate = 1.1;
+                } else if (
+                  estimatedLatency < targetLatency - latencyTolerance &&
+                  video.playbackRate > 1
+                ) {
+                  // Getting too close, slow down to normal if sped up
+                  video.playbackRate = 1.0;
+                } else if (
+                  estimatedLatency <
+                  targetLatency - latencyTolerance
+                ) {
+                  // Getting too close, but not sped up, could slow down slightly if needed (optional)
+                  // video.playbackRate = 0.9;
+                } else {
+                  video.playbackRate = 1.0; // Within tolerance, set to normal
+                }
+              }
+
+              let bufferLength = 0;
+              if (video.buffered.length > 0) {
+                for (let i = 0; i < video.buffered.length; i++) {
+                  const start = video.buffered.start(i);
+                  const end = video.buffered.end(i);
+                  if (start <= video.currentTime && video.currentTime <= end) {
+                    bufferLength = end - video.currentTime;
+                    break;
+                  }
+                }
+              }
+
+              liveLatencySpan.textContent = estimatedLatency;
+              bufferLengthSpan.textContent =
+                bufferLength >= 0 ? bufferLength.toFixed(2) + 's' : 'N/A'; // Ensure buffer length is not negative
+              playbackRateSpan.textContent = video.playbackRate.toFixed(2);
+            }
+          }, 1000);
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = hlsUrl;
+          video.addEventListener('loadedmetadata', function () {
+            video.play();
+          });
+        } else {
+          console.error(
+            'This browser does not support HLS playback natively or via HLS.js',
+          );
+        }
+      });
+    </script>
+  </body>
+</html>
