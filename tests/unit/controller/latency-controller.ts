@@ -324,4 +324,121 @@ describe('LatencyController', function () {
       expect(latencyController.latency).to.equal(0);
     });
   });
+
+  describe('liveCatchupEnabled', function () {
+    it('activates rate adjustment without lowLatencyMode', function () {
+      latencyController['config'].liveCatchupEnabled = true;
+      latencyController['config'].maxLiveSyncPlaybackRate = 1.5;
+      latencyController['config'].lowLatencyMode = false;
+      levelDetails.holdBack = 6;
+      mockTimeRanges = [[0, 20]];
+      levelDetails.edge = 20;
+      media.currentTime = 12;
+      expect(media.playbackRate).to.be.above(1);
+    });
+
+    it('does not activate without liveCatchupEnabled and without lowLatencyMode', function () {
+      latencyController['config'].liveCatchupEnabled = false;
+      latencyController['config'].maxLiveSyncPlaybackRate = 1.5;
+      latencyController['config'].lowLatencyMode = false;
+      levelDetails.holdBack = 6;
+      mockTimeRanges = [[0, 20]];
+      levelDetails.edge = 20;
+      media.currentTime = 12;
+      expect(media.playbackRate).to.equal(1);
+    });
+  });
+
+  describe('minLiveSyncPlaybackRate (slowdown)', function () {
+    it('decreases playbackRate when player is ahead of target and buffer is sufficient', function () {
+      // player at 16s, liveEdge=20, target holdBack=6 → latency=4, ahead by 2s
+      latencyController['config'].liveCatchupEnabled = true;
+      latencyController['config'].maxLiveSyncPlaybackRate = 1.5;
+      latencyController['config'].minLiveSyncPlaybackRate = 0.8;
+      latencyController['config'].liveCatchupMinBuffer = 1.5;
+      levelDetails.holdBack = 6;
+      mockTimeRanges = [[0, 20]]; // 4s forward buffer at currentTime=16
+      levelDetails.edge = 20;
+      media.currentTime = 16;
+      expect(media.playbackRate).to.be.within(0.8, 1.0);
+    });
+
+    it('does not decrease playbackRate below minLiveSyncPlaybackRate', function () {
+      latencyController['config'].liveCatchupEnabled = true;
+      latencyController['config'].maxLiveSyncPlaybackRate = 1.5;
+      latencyController['config'].minLiveSyncPlaybackRate = 0.8;
+      latencyController['config'].liveCatchupMinBuffer = 1.5;
+      levelDetails.holdBack = 6;
+      mockTimeRanges = [[0, 20]];
+      levelDetails.edge = 20;
+      media.currentTime = 19; // latency = 1s, very ahead of target 6s
+      expect(media.playbackRate).to.be.at.least(0.8);
+    });
+
+    it('holds playbackRate at 1 when forward buffer is below liveCatchupMinBuffer', function () {
+      latencyController['config'].liveCatchupEnabled = true;
+      latencyController['config'].maxLiveSyncPlaybackRate = 1.5;
+      latencyController['config'].minLiveSyncPlaybackRate = 0.8;
+      latencyController['config'].liveCatchupMinBuffer = 1.5;
+      levelDetails.holdBack = 6;
+      mockTimeRanges = [[0, 17]]; // only 1s of buffer at currentTime=16
+      levelDetails.edge = 20;
+      media.currentTime = 16;
+      expect(media.playbackRate).to.equal(1);
+    });
+  });
+
+  describe('liveLatencyMode: wall-clock', function () {
+    let clock: sinon.SinonFakeTimers;
+
+    beforeEach(function () {
+      clock = sinon.useFakeTimers(Date.now());
+    });
+
+    afterEach(function () {
+      clock.restore();
+    });
+
+    it('returns null latency when playingDate is null', function () {
+      latencyController['config'].liveLatencyMode = 'wall-clock';
+      latencyController['config'].liveCatchupEnabled = true;
+      latencyController['config'].maxLiveSyncPlaybackRate = 1.5;
+      sinon.stub(hls, 'playingDate').get(() => null);
+      mockTimeRanges = [[0, 20]];
+      levelDetails.edge = 20;
+      media.currentTime = 8;
+      // computeLatency returns null → _latency stays 0, playbackRate unchanged
+      expect(latencyController.latency).to.equal(0);
+      expect(media.playbackRate).to.equal(1);
+    });
+
+    it('uses Date.now() - playingDate for latency measurement and adjusts rate', function () {
+      latencyController['config'].liveLatencyMode = 'wall-clock';
+      latencyController['config'].liveCatchupEnabled = true;
+      latencyController['config'].maxLiveSyncPlaybackRate = 1.5;
+      latencyController['config'].liveSyncDuration = 8;
+      latencyController['_targetLatencyUpdated'] = true;
+      const now = Date.now();
+      const playingDate = new Date(now - 10000); // 10s wall-clock latency
+      sinon.stub(hls, 'playingDate').get(() => playingDate);
+      mockTimeRanges = [[0, 20]];
+      levelDetails.edge = 20;
+      media.currentTime = 10;
+      // wall-clock latency = 10s, target = 8s → distanceFromTarget = 2 → speed up
+      expect(media.playbackRate).to.be.within(1.1, 1.5);
+    });
+
+    it('ignores liveEdge when in wall-clock mode and reports wall-clock latency', function () {
+      latencyController['config'].liveLatencyMode = 'wall-clock';
+      latencyController['config'].liveCatchupEnabled = true;
+      latencyController['config'].maxLiveSyncPlaybackRate = 1.5;
+      const now = Date.now();
+      const playingDate = new Date(now - 12000); // 12s wall-clock latency
+      sinon.stub(hls, 'playingDate').get(() => playingDate);
+      levelDetails.edge = 20;
+      mockTimeRanges = [[0, 20]];
+      media.currentTime = 5; // liveEdge - currentTime = 15s, but wall-clock = 12s
+      expect(latencyController.latency).to.be.closeTo(12, 0.1);
+    });
+  });
 });

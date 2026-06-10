@@ -222,13 +222,17 @@ export default class LatencyController implements ComponentAPI {
     }
     this._latency = latency;
 
-    // Adapt playbackRate to meet target latency in low-latency mode
-    const { lowLatencyMode, maxLiveSyncPlaybackRate } = this.config;
-    if (
-      !lowLatencyMode ||
-      maxLiveSyncPlaybackRate === 1 ||
-      !levelDetails.live
-    ) {
+    // Adapt playbackRate to meet target latency
+    const {
+      lowLatencyMode,
+      maxLiveSyncPlaybackRate,
+      minLiveSyncPlaybackRate,
+      liveCatchupEnabled,
+      liveCatchupMinBuffer,
+    } = this.config;
+    const catchupActive =
+      liveCatchupEnabled || (lowLatencyMode && maxLiveSyncPlaybackRate !== 1);
+    if (!catchupActive || !levelDetails.live) {
       return;
     }
     const targetLatency = this.targetLatency;
@@ -236,8 +240,7 @@ export default class LatencyController implements ComponentAPI {
       return;
     }
     const distanceFromTarget = latency - targetLatency;
-    // Only adjust playbackRate when within one target duration of targetLatency
-    // and more than one second from under-buffering.
+    // Only adjust playbackRate when within one target duration of targetLatency.
     // Playback further than one target duration from target can be considered DVR playback.
     const liveMinLatencyDuration = Math.min(
       this.maxLatency,
@@ -245,18 +248,25 @@ export default class LatencyController implements ComponentAPI {
     );
     const inLiveRange = distanceFromTarget < liveMinLatencyDuration;
 
-    if (
-      inLiveRange &&
-      distanceFromTarget > 0.05 &&
-      this.forwardBufferLength > 1
-    ) {
+    if (inLiveRange && Math.abs(distanceFromTarget) > 0.05) {
       const max = Math.min(2, Math.max(1.0, maxLiveSyncPlaybackRate));
+      const min = Math.max(0.5, Math.min(1, minLiveSyncPlaybackRate));
       const rate =
         Math.round(
           (2 / (1 + Math.exp(-0.75 * distanceFromTarget - this.edgeStalled))) *
             20,
         ) / 20;
-      const playbackRate = Math.min(max, Math.max(1, rate));
+      let playbackRate = Math.min(max, Math.max(min, rate));
+      if (distanceFromTarget > 0 && this.forwardBufferLength <= 1) {
+        // Not enough buffer to speed up safely
+        playbackRate = 1;
+      } else if (
+        distanceFromTarget < 0 &&
+        this.forwardBufferLength < liveCatchupMinBuffer
+      ) {
+        // Not enough buffer margin to slow down safely
+        playbackRate = 1;
+      }
       this.changeMediaPlaybackRate(media, playbackRate);
     } else if (media.playbackRate !== 1 && media.playbackRate !== 0) {
       this.changeMediaPlaybackRate(media, 1);
@@ -285,6 +295,13 @@ export default class LatencyController implements ComponentAPI {
   }
 
   private computeLatency(): number | null {
+    if (this.config.liveLatencyMode === 'wall-clock') {
+      const playingDate = this.hls?.playingDate;
+      if (!playingDate) {
+        return null;
+      }
+      return (Date.now() - playingDate.getTime()) / 1000;
+    }
     const liveEdge = this.estimateLiveEdge();
     if (liveEdge === null) {
       return null;

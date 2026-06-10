@@ -287,7 +287,11 @@ export type LatencyControllerConfig = {
   liveSyncDuration?: number;
   liveMaxLatencyDuration?: number;
   maxLiveSyncPlaybackRate: number;
+  minLiveSyncPlaybackRate: number;
   liveSyncOnStallIncrease: number;
+  liveLatencyMode: 'media-timeline' | 'wall-clock';
+  liveCatchupEnabled: boolean;
+  liveCatchupMinBuffer: number;
 };
 
 export type PlaylistControllerConfig = {
@@ -462,6 +466,10 @@ export const hlsDefaultConfig: HlsConfig = {
   liveSyncDuration: undefined, // used by latency-controller
   liveMaxLatencyDuration: undefined, // used by latency-controller
   maxLiveSyncPlaybackRate: 1, // used by latency-controller
+  minLiveSyncPlaybackRate: 1, // used by latency-controller
+  liveLatencyMode: 'media-timeline' as const, // used by latency-controller
+  liveCatchupEnabled: false, // used by latency-controller
+  liveCatchupMinBuffer: 1.5, // used by latency-controller
   liveDurationInfinity: false, // used by buffer-controller
   /**
    * @deprecated use backBufferLength
@@ -735,6 +743,16 @@ export function mergeConfig(
     throw new Error(
       'Illegal hls.js config: "liveMaxLatencyDuration" must be greater than "liveSyncDuration"',
     );
+  }
+
+  if (userConfig.minLiveSyncPlaybackRate !== undefined) {
+    const clamped = clamp(userConfig.minLiveSyncPlaybackRate, 0.5, 1);
+    if (clamped !== userConfig.minLiveSyncPlaybackRate) {
+      logger.warn(
+        `Illegal hls.js config: minLiveSyncPlaybackRate must be between 0.5 and 1; clamping to ${clamped}`,
+      );
+      userConfig.minLiveSyncPlaybackRate = clamped;
+    }
   }
 
   if (userConfig.liveMaxUnchangedPlaylistRefresh !== undefined) {
