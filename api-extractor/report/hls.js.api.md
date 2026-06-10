@@ -3379,7 +3379,11 @@ export type LatencyControllerConfig = {
     liveSyncDuration?: number;
     liveMaxLatencyDuration?: number;
     maxLiveSyncPlaybackRate: number;
+    minLiveSyncPlaybackRate: number;
     liveSyncOnStallIncrease: number;
+    liveLatencyMode: 'media-timeline' | 'wall-clock';
+    liveCatchupEnabled: boolean;
+    liveCatchupMinBuffer: number;
 };
 
 // Warning: (ae-missing-release-tag) "Level" is part of the package's API, but it is missing a release tag (@alpha, @beta, @public, or @internal)
