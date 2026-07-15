@@ -11,6 +11,7 @@ import {
   CmcdReporter,
   CmcdStreamingFormat,
   CmcdStreamType,
+  isCmcdCustomKey,
   toCmcdValue,
 } from '@svta/cml-cmcd';
 import { Events } from '../events';
@@ -19,6 +20,7 @@ import {
   removeEventListener,
 } from '../utils/event-listener-helper';
 import type {
+  CmcdCustomReporter,
   FragmentLoaderConstructor,
   HlsConfig,
   PlaylistLoaderConstructor,
@@ -30,6 +32,7 @@ import type {
   BufferAppendedData,
   BufferFlushedData,
   ErrorData,
+  LevelSwitchedData,
   LevelSwitchingData,
   ManifestLoadingData,
   MediaAttachedData,
@@ -42,9 +45,15 @@ import type {
   LoaderCallbacks,
   LoaderConfiguration,
   LoaderContext,
+  LoaderResponse,
+  LoaderStats,
   PlaylistLoaderContext,
 } from '../types/loader';
 import type { Cmcd } from '@svta/cml-cmcd';
+
+function validateCmcdCustomData(data: Record<string, unknown>): boolean {
+  return Object.keys(data).every(isCmcdCustomKey);
+}
 
 /**
  * Controller to deal with Common Media Client Data (CMCD)
@@ -59,6 +68,7 @@ export default class CMCDController implements ComponentAPI {
   private buffering: boolean = true;
   private playerState?: CmcdPlayerState;
   private reporter?: CmcdReporter;
+  private playheadLevel?: Level;
 
   constructor(hls: Hls) {
     this.hls = hls;
@@ -104,6 +114,27 @@ export default class CMCDController implements ComponentAPI {
       sf: CmcdStreamingFormat.HLS,
       sta: this.playerState,
     });
+
+    if (cmcd.reporterCallback) {
+      const reporter = this.reporter;
+      const customKeyAndEventReport: CmcdCustomReporter = {
+        updateCustomData: (data) => {
+          if (validateCmcdCustomData(data)) {
+            reporter.update(data);
+          }
+        },
+        recordCustomEvent: (eventName, data = {}) => {
+          if (validateCmcdCustomData(data)) {
+            reporter.recordEvent(CmcdEventType.CUSTOM_EVENT, {
+              cen: eventName,
+              ...data,
+            });
+          }
+        },
+      };
+      cmcd.reporterCallback(customKeyAndEventReport);
+    }
+
     this.reporter.start();
   }
 
@@ -115,6 +146,7 @@ export default class CMCDController implements ComponentAPI {
     hls.on(Events.MEDIA_ENDED, this.onMediaEnded, this);
     hls.on(Events.ERROR, this.onError, this);
     hls.on(Events.LEVEL_SWITCHING, this.onLevelSwitching, this);
+    hls.on(Events.LEVEL_SWITCHED, this.onLevelSwitched, this);
     hls.on(Events.BUFFER_APPENDED, this.onBufferInfoChange, this);
     hls.on(Events.BUFFER_FLUSHED, this.onBufferInfoChange, this);
   }
@@ -127,6 +159,7 @@ export default class CMCDController implements ComponentAPI {
     hls.off(Events.MEDIA_ENDED, this.onMediaEnded, this);
     hls.off(Events.ERROR, this.onError, this);
     hls.off(Events.LEVEL_SWITCHING, this.onLevelSwitching, this);
+    hls.off(Events.LEVEL_SWITCHED, this.onLevelSwitched, this);
     hls.off(Events.BUFFER_APPENDED, this.onBufferInfoChange, this);
     hls.off(Events.BUFFER_FLUSHED, this.onBufferInfoChange, this);
   }
@@ -266,7 +299,7 @@ export default class CMCDController implements ComponentAPI {
     if (data.fatal) {
       this.setPlayerState(CmcdPlayerState.FATAL_ERROR);
       if (this.reporter) {
-        this.reporter.recordEvent(CmcdEventType.ERROR);
+        this.reporter.recordEvent(CmcdEventType.ERROR, { ec: [data.details] });
       }
     }
   }
@@ -285,6 +318,16 @@ export default class CMCDController implements ComponentAPI {
       eventData.ot = this.getObjectType(frag, data);
     }
     this.reporter.recordEvent(CmcdEventType.BITRATE_CHANGE, eventData);
+  }
+
+  private onLevelSwitched(
+    _event: Events.LEVEL_SWITCHED,
+    data: LevelSwitchedData,
+  ) {
+    const level = this.hls.levels[data.level];
+    if (level) {
+      this.playheadLevel = level;
+    }
   }
 
   private setPlayerState(state: CmcdPlayerState) {
@@ -346,8 +389,6 @@ export default class CMCDController implements ComponentAPI {
       data.su = this.buffering;
     }
 
-    // TODO: Implement rtp, dl
-
     const report = this.reporter.createRequestReport(
       { url: context.url, headers: context.headers },
       data,
@@ -387,14 +428,44 @@ export default class CMCDController implements ComponentAPI {
         ot === CmcdObjectType.MUXED ||
         (ot == null && (frag.type === 'main' || frag.type === 'audio'))
       ) {
-        data.br = [level.bitrate / 1000];
-        const tb = this.getTopBandwidth(frag) / 1000;
-        if (Number.isFinite(tb)) {
-          data.tb = [tb];
+        const bitrateKbps = level.bitrate / 1000;
+        data.br = [bitrateKbps];
+        const { cmcd } = this.config;
+        const rtpSafetyFactor = cmcd?.rtpSafetyFactor ?? 5;
+        data.rtp = Math.round((bitrateKbps * rtpSafetyFactor) / 100) * 100;
+
+        if (
+          ot === CmcdObjectType.MUXED ||
+          (ot == null && frag.type === 'main')
+        ) {
+          const tb = this.getTopBandwidth() / 1000;
+          if (Number.isFinite(tb)) {
+            data.tb = [tb];
+          }
+
+          const lb = this.getLowestBandwidth() / 1000;
+          if (Number.isFinite(lb)) {
+            data.lb = [lb];
+          }
         }
+
         const bl = this.getBufferLength(frag);
         if (Number.isFinite(bl)) {
           data.bl = [bl];
+          const pr = this.media?.playbackRate || 1;
+          data.dl = Math.round(bl / pr / 100) * 100;
+        }
+
+        if (this.playheadLevel) {
+          data.pb = [this.playheadLevel.bitrate / 1000];
+        }
+
+        const maxIdx = this.hls.maxAutoLevel;
+        if (maxIdx >= 0) {
+          const topLevel = this.hls.levels[maxIdx];
+          if (topLevel) {
+            data.tpb = [topLevel.bitrate / 1000];
+          }
         }
       }
 
@@ -507,18 +578,12 @@ export default class CMCDController implements ComponentAPI {
    * Audio renditions live in hls.audioTracks; everything else (including
    * audio-only main playlists) draws from hls.levels.
    */
-  private getTopBandwidth(fragment: Fragment | MediaFragment) {
+  private getTopBandwidth() {
     let bitrate: number = 0;
-    let levels;
     const hls = this.hls;
-
-    if (fragment.type === 'audio') {
-      levels = hls.audioTracks;
-    } else {
-      const max = hls.maxAutoLevel;
-      const len = max > -1 ? max + 1 : hls.levels.length;
-      levels = hls.levels.slice(0, len);
-    }
+    const max = hls.maxAutoLevel;
+    const len = max > -1 ? max + 1 : hls.levels.length;
+    const levels = hls.levels.slice(0, len);
 
     levels.forEach((level) => {
       if (level.bitrate > bitrate) {
@@ -527,6 +592,22 @@ export default class CMCDController implements ComponentAPI {
     });
 
     return bitrate > 0 ? bitrate : NaN;
+  }
+
+  private getLowestBandwidth() {
+    let bitrate: number = Infinity;
+    const hls = this.hls;
+    const max = hls.maxAutoLevel;
+    const len = max > -1 ? max + 1 : hls.levels.length;
+    const levels = hls.levels.slice(0, len);
+
+    levels.forEach((level) => {
+      if (level.bitrate < bitrate) {
+        bitrate = level.bitrate;
+      }
+    });
+
+    return Number.isFinite(bitrate) ? bitrate : NaN;
   }
 
   /**
@@ -577,6 +658,37 @@ export default class CMCDController implements ComponentAPI {
     this.reporter.update({ bl: [bl] });
   }
 
+  private recordFragmentResponse = (
+    url: string,
+    response: LoaderResponse,
+    stats: LoaderStats,
+  ) => {
+    const { cmcd } = this.config;
+    const hasResponseTarget = cmcd?.eventTargets?.some((t) =>
+      t.events?.includes(CmcdEventType.RESPONSE_RECEIVED),
+    );
+    if (!this.reporter || !(stats.loading.first > 0) || !hasResponseTarget) {
+      return;
+    }
+    try {
+      this.reporter.recordResponseReceived({
+        request: { url },
+        status: response.code,
+        resourceTiming: {
+          startTime: stats.loading.start,
+          responseStart: stats.loading.first,
+          duration: stats.loading.end - stats.loading.start,
+          encodedBodySize: stats.total,
+        },
+      });
+    } catch (error) {
+      this.hls.logger.warn(
+        'Could not record fragment response CMCD data.',
+        error,
+      );
+    }
+  };
+
   /**
    * Create a playlist loader
    */
@@ -625,6 +737,7 @@ export default class CMCDController implements ComponentAPI {
   private createFragmentLoader(): FragmentLoaderConstructor | undefined {
     const { fLoader } = this.config;
     const apply = this.applyFragmentData;
+    const recordResponse = this.recordFragmentResponse;
     const Ctor = fLoader || (this.config.loader as FragmentLoaderConstructor);
 
     return class CmcdFragmentLoader {
@@ -656,7 +769,14 @@ export default class CMCDController implements ComponentAPI {
         callbacks: LoaderCallbacks<FragmentLoaderContext>,
       ) {
         apply(context);
-        this.loader.load(context, config, callbacks);
+        const { onSuccess } = callbacks;
+        this.loader.load(context, config, {
+          ...callbacks,
+          onSuccess: (response, stats, ctx, networkDetails) => {
+            onSuccess(response, stats, ctx, networkDetails);
+            recordResponse(context.url, response, stats);
+          },
+        });
       }
     };
   }

@@ -4,6 +4,8 @@
 
 ```ts
 
+import type { CmcdCustomKey } from '@svta/cml-cmcd';
+import type { CmcdCustomValue } from '@svta/cml-cmcd';
 import type { CmcdEventReportConfig } from '@svta/cml-cmcd';
 import type { CmcdKey } from '@svta/cml-cmcd';
 import type { CmcdVersion } from '@svta/cml-cmcd';
@@ -486,7 +488,7 @@ export class BaseStreamController extends TaskLoop implements NetworkComponentAP
     // (undocumented)
     protected exceedsMaxBuffer(bufferInfo: BufferInfo, maxBufLen: number, selected: Fragment): boolean;
     // (undocumented)
-    protected filterReplacedPrimary(frag: MediaFragment | null, details: LevelDetails | undefined): MediaFragment | null;
+    protected filterReplacedPrimary<T extends MediaFragment | Part>(frag: T | null, details: LevelDetails | undefined): T | null;
     // (undocumented)
     protected flushBufferGap(frag: Fragment): void;
     // (undocumented)
@@ -1025,6 +1027,7 @@ export type CMCDControllerConfig = {
     useHeaders?: boolean;
     includeKeys?: CmcdKey[];
     version?: CmcdVersion;
+    rtpSafetyFactor?: number;
     eventTargets?: (Omit<CmcdEventReportConfig, 'enabledKeys'> & {
         includeKeys?: CmcdKey[];
     })[];
@@ -1036,7 +1039,25 @@ export type CMCDControllerConfig = {
     }) => Promise<{
         status: number;
     }>;
+    reporterCallback?: (reporter: CmcdCustomReporter) => void;
 };
+
+// Warning: (ae-missing-release-tag) "CmcdCustomData" is part of the package's API, but it is missing a release tag (@alpha, @beta, @public, or @internal)
+//
+// @public (undocumented)
+export type CmcdCustomData = {
+    [index: CmcdCustomKey]: CmcdCustomValue | undefined;
+};
+
+// Warning: (ae-missing-release-tag) "CmcdCustomReporter" is part of the package's API, but it is missing a release tag (@alpha, @beta, @public, or @internal)
+//
+// @public (undocumented)
+export interface CmcdCustomReporter {
+    // (undocumented)
+    recordCustomEvent(eventName: string, data?: CmcdCustomData): void;
+    // (undocumented)
+    updateCustomData(data: CmcdCustomData): void;
+}
 
 // Warning: (ae-missing-release-tag) "CodecsParsed" is part of the package's API, but it is missing a release tag (@alpha, @beta, @public, or @internal)
 //
@@ -1142,6 +1163,8 @@ export class DateRange {
     get endOnNext(): boolean;
     // (undocumented)
     get id(): string;
+    // (undocumented)
+    get invalidReason(): string | null;
     // (undocumented)
     get isInterstitial(): boolean;
     // (undocumented)
@@ -2397,7 +2420,7 @@ export class HlsAssetPlayer {
     // (undocumented)
     get bufferedEnd(): number;
     // (undocumented)
-    bufferedInPlaceToEnd(media?: HTMLMediaElement | null): boolean;
+    bufferedInPlaceToEnd(media?: HTMLMediaElement | null, fromTime?: number): boolean;
     // (undocumented)
     get currentTime(): number;
     // (undocumented)
